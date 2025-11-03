@@ -14,6 +14,7 @@ console = Console()
 def run_all_checkers(
     source: SourceInput,
     checkers: list[CheckerType] | None = None,
+    debug: bool = False,
 ) -> dict[CheckerType, CheckResult]:
     """run all type checkers in parallel.
 
@@ -30,6 +31,9 @@ def run_all_checkers(
 
     results: dict[CheckerType, CheckResult] = {}
 
+    if debug:
+        console.print(f"[dim]running {len(checkers)} type checkers in parallel[/dim]")
+
     with ThreadPoolExecutor() as executor:
         futures = {
             executor.submit(get_checker(checker).check, source): checker
@@ -41,6 +45,11 @@ def run_all_checkers(
             try:
                 result = future.result()
                 results[checker] = result
+                if debug:
+                    console.print(
+                        f"[dim]{checker.value} completed in {result.duration:.3f}s "
+                        f"(exit code: {result.exit_code})[/dim]"
+                    )
             except Exception as e:
                 console.print(f"[red]error running {checker}: {e}[/red]")
 

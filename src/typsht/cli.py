@@ -46,6 +46,13 @@ def main(
             help="show detailed output from each checker",
         ),
     ] = False,
+    debug: Annotated[
+        bool,
+        Parameter(
+            name=["--debug"],
+            help="show debug information including command execution details",
+        ),
+    ] = False,
 ) -> None:
     """run type checkers in parallel on python code.
 
@@ -98,7 +105,7 @@ def main(
         selected_checkers = [CheckerType.MYPY, CheckerType.PYRIGHT, CheckerType.TY]
 
     # run type checkers
-    results = run_all_checkers(source_input, selected_checkers)
+    results = run_all_checkers(source_input, selected_checkers, debug=debug)
 
     # display results
     display_results(results)
