@@ -95,9 +95,7 @@ def main(
         valid_checkers = {c.value for c in CheckerType}
         invalid = [c for c in checkers if c not in valid_checkers]
         if invalid:
-            console.print(
-                f"[red]error: invalid checkers: {', '.join(invalid)}[/red]"
-            )
+            console.print(f"[red]error: invalid checkers: {', '.join(invalid)}[/red]")
             console.print(f"[dim]valid options: {', '.join(valid_checkers)}[/dim]")
             sys.exit(1)
         selected_checkers = [CheckerType(c) for c in checkers]
