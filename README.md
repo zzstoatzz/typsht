@@ -47,6 +47,21 @@ show detailed output from each checker:
 typsht --file my_module.py --verbose
 ```
 
+### project support
+
+typsht automatically detects when checking files in a uv project (containing `pyproject.toml` or `uv.lock`) and runs type checkers using `uv run --project`, giving them access to your local development packages.
+
+this is useful for library developers who want to verify type annotations work across multiple checkers:
+
+```bash
+# in a project with local packages installed in editable mode
+uvx typsht --file repros/test_case.py --verbose
+
+# type checkers will have access to your local package imports
+```
+
+inline code always runs in an isolated environment.
+
 ## supported type checkers
 
 by default, typsht runs:
