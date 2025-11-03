@@ -782,7 +782,6 @@ wheels = [
 
 [[package]]
 name = "typsht"
-version = "0.0.1a0"
 source = { editable = "." }
 dependencies = [
     { name = "cyclopts" },
