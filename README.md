@@ -6,6 +6,20 @@ inspired by tox, but specifically for type checkers. get comprehensive type chec
 
 ## installation
 
+### quick start (no installation)
+
+use `uvx` to run typsht without installing it:
+
+```bash
+# check inline code
+uvx typsht 'def foo(x: int) -> str: return x'
+
+# check a file
+uvx typsht --file my_module.py
+```
+
+### install to your project
+
 ```bash
 uv add typsht
 ```
