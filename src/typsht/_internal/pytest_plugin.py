@@ -378,14 +378,21 @@ class TypeTestItem(pytest.Item):
             # priority 1: inline assertions (checker-agnostic)
             if self.case.inline_assertions:
                 self._check_inline_assertions(parsed, checker_type, result.output)
-            # priority 2: per-checker or global expected output (legacy mode)
-            elif (
-                expected := self.case.checker_outputs.get(
-                    checker_type, self.case.expected_output
-                )
-            ) is not None:
+            # priority 2: per-checker expected output
+            elif (expected := self.case.checker_outputs.get(checker_type)) is not None:
                 self._assert_output(result.output, expected, checker_type)
-            # priority 3: should_pass flag
+            # priority 3: global expected output (legacy mode - applies to mypy only)
+            elif self.case.expected_output is not None:
+                if checker_type == CheckerType.MYPY:
+                    self._assert_output(
+                        result.output, self.case.expected_output, checker_type
+                    )
+                elif not result.success:
+                    # for other checkers, just verify no errors
+                    raise TypeTestFailure(
+                        f"{checker_type.value} failed:\n{result.output}"
+                    )
+            # priority 4: should_pass flag
             elif self.case.should_pass is not None:
                 if self.case.should_pass and not result.success:
                     raise TypeTestFailure(
