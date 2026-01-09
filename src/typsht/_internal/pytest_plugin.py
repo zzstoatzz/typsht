@@ -133,6 +133,9 @@ def normalize_type(type_str: str, checker: CheckerType) -> str:
 
     we normalize to lowercase modern Python style: int, str, list[int]
     also normalizes simple Literal types to their base type.
+
+    note: this only handles common stdlib types. for complex/custom types,
+    use pattern matching with # R: ~pattern syntax.
     """
     result = type_str
 
@@ -407,13 +410,26 @@ class TypeTestItem(pytest.Item):
                         f"available reveals: {parsed.revealed_types}\n"
                         f"output:\n{raw_output}"
                     )
-                expected_type = normalize_type(assertion.pattern, checker)
-                if actual_type != expected_type:
-                    raise TypeTestFailure(
-                        f"{checker.value}: type mismatch on line {assertion.line}\n"
-                        f"expected: {expected_type}\n"
-                        f"actual: {actual_type}"
-                    )
+
+                pattern = assertion.pattern
+                # ~pattern means "contains" match (for complex types)
+                if pattern.startswith("~"):
+                    search_pattern = pattern[1:]
+                    if search_pattern not in actual_type:
+                        raise TypeTestFailure(
+                            f"{checker.value}: type on line {assertion.line} "
+                            f"does not contain '{search_pattern}'\n"
+                            f"actual: {actual_type}"
+                        )
+                else:
+                    # exact match after normalization
+                    expected_type = normalize_type(pattern, checker)
+                    if actual_type != expected_type:
+                        raise TypeTestFailure(
+                            f"{checker.value}: type mismatch on line {assertion.line}\n"
+                            f"expected: {expected_type}\n"
+                            f"actual: {actual_type}"
+                        )
             elif assertion.kind == "E":
                 # error assertion - check for error matching pattern anywhere
                 # (different checkers report errors on different lines)
