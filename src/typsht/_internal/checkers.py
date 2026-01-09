@@ -83,7 +83,17 @@ class MypyChecker(TypeChecker):
         self, path: Path, project_root: Path | None
     ) -> subprocess.CompletedProcess:
         if project_root:
-            cmd = ["uv", "run", "--project", str(project_root), "mypy", str(path)]
+            # use --follow-imports=normal to ensure imports are resolved
+            # when testing code that imports from local packages
+            cmd = [
+                "uv",
+                "run",
+                "--project",
+                str(project_root),
+                "mypy",
+                "--follow-imports=normal",
+                str(path),
+            ]
         else:
             cmd = ["mypy", str(path)]
 
