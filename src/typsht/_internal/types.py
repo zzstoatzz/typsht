@@ -31,6 +31,7 @@ class SourceInput:
 
     content: str | None = None
     path: Path | None = None
+    project_root: Path | None = None  # explicit project root for context
 
     def __post_init__(self) -> None:
         if not self.content and not self.path:

@@ -32,7 +32,7 @@ from typing import Any
 import pytest
 import yaml
 
-from typsht._internal.checkers import get_checker
+from typsht._internal.checkers import find_project_root, get_checker
 from typsht._internal.types import CheckerType, SourceInput
 
 # ---------------------------------------------------------------------------
@@ -360,7 +360,12 @@ class TypeTestItem(pytest.Item):
 
     def runtest(self) -> None:
         """run the type checking test."""
-        source = SourceInput(content=self.case.main)
+        # detect project root from the yaml file's location
+        project_root = None
+        if self.case.source_path:
+            project_root = find_project_root(self.case.source_path)
+
+        source = SourceInput(content=self.case.main, project_root=project_root)
 
         for checker_type in self.case.checkers:
             checker = get_checker(checker_type)

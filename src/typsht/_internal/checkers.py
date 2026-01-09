@@ -42,15 +42,15 @@ class TypeChecker:
                 f.write(source.content)
                 temp_path = Path(f.name)
             try:
-                # inline code doesn't have a project context
-                result = self._run_checker(temp_path, project_root=None)
+                # use explicit project_root if provided
+                result = self._run_checker(temp_path, project_root=source.project_root)
             finally:
                 temp_path.unlink()
         else:
             # source.path is guaranteed to be set if content is not
             assert source.path is not None
-            # detect project root for file-based checks
-            project_root = find_project_root(source.path)
+            # use explicit project_root if provided, otherwise detect
+            project_root = source.project_root or find_project_root(source.path)
             result = self._run_checker(source.path, project_root=project_root)
 
         duration = time.time() - start
