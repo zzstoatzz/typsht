@@ -1,0 +1,34 @@
+# example type safety tests using the typsht pytest plugin
+# these tests use inline assertions that work across all type checkers
+
+- case: simple_reveal_type
+  checkers: [mypy, pyright, ty]
+  main: |
+    x: int = 42
+    reveal_type(x)  # R: int
+
+- case: list_reveal_type
+  checkers: [mypy, pyright, ty]
+  main: |
+    x: list[str] = ["a", "b"]
+    reveal_type(x)  # R: list[str]
+
+- case: function_return_type_error
+  checkers: [mypy, pyright, ty]
+  main: |
+    def foo(x: int) -> str:
+        return x  # E: return
+
+- case: valid_function_should_pass
+  checkers: [mypy, pyright, ty]
+  main: |
+    def add(a: int, b: int) -> int:
+        return a + b
+  should_pass: true
+
+# legacy mode still works for mypy-specific tests
+- case: legacy_mypy_output
+  main: |
+    x: int = 42
+    reveal_type(x)
+  out: 'Revealed type is "builtins.int"'

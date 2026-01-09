@@ -62,6 +62,79 @@ uvx typsht --file repros/test_case.py --verbose
 
 inline code always runs in an isolated environment.
 
+## pytest plugin
+
+typsht includes a pytest plugin for running type safety tests across multiple type checkers. the key feature is **inline assertions** that work identically across mypy, pyright, and ty.
+
+### inline assertions (checker-agnostic)
+
+use `# R: type` for reveal_type assertions and `# E: pattern` for error assertions:
+
+```yaml
+- case: reveal_type_works_across_checkers
+  checkers: [mypy, pyright, ty]
+  main: |
+    x: list[str] = ["a", "b"]
+    reveal_type(x)  # R: list[str]
+
+- case: error_detected_across_checkers
+  checkers: [mypy, pyright, ty]
+  main: |
+    def foo(x: int) -> str:
+        return x  # E: return
+```
+
+the plugin normalizes type representations (`builtins.int` -> `int`, `List` -> `list`, `Literal[42]` -> `int`) so the same assertion works across all checkers.
+
+### legacy format (pytest-mypy-plugins compatible)
+
+also supports the [pytest-mypy-plugins](https://github.com/typeddjango/pytest-mypy-plugins) format for migrating existing tests:
+
+```yaml
+- case: mypy_specific_output
+  main: |
+    x: int = 42
+    reveal_type(x)
+  out: 'Revealed type is "builtins.int"'
+
+- case: should_pass_check
+  main: |
+    def add(a: int, b: int) -> int:
+        return a + b
+  should_pass: true
+```
+
+run the tests:
+```bash
+pytest tests/typesafety/
+```
+
+### programmatic assertions
+
+for python tests, use the assertion helpers directly:
+
+```python
+from typsht import assert_type_equals, assert_type_error, assert_no_errors, CheckerType
+
+def test_reveal_type():
+    assert_type_equals('''
+        x: int = 1
+        reveal_type(x)
+    ''', line=2, expected_type="int", checkers=[CheckerType.MYPY, CheckerType.PYRIGHT, CheckerType.TY])
+
+def test_catches_error():
+    assert_type_error('''
+        def foo(x: int) -> str:
+            return x
+    ''', error_pattern="return", checkers=[CheckerType.MYPY, CheckerType.PYRIGHT, CheckerType.TY])
+
+def test_valid_code():
+    assert_no_errors('''
+        def add(a: int, b: int) -> int:
+            return a + b
+    ''', checkers=[CheckerType.MYPY, CheckerType.PYRIGHT, CheckerType.TY])
+```
+
 ## supported type checkers
 
 by default, typsht runs:
