@@ -64,39 +64,44 @@ inline code always runs in an isolated environment.
 
 ## pytest plugin
 
-typsht includes a pytest plugin for running type safety tests. it's compatible with the [pytest-mypy-plugins](https://github.com/typeddjango/pytest-mypy-plugins) YAML format, making it easy to migrate existing tests or run them across multiple type checkers.
+typsht includes a pytest plugin for running type safety tests across multiple type checkers. the key feature is **inline assertions** that work identically across mypy, pyright, and ty.
 
-### yaml test format
+### inline assertions (checker-agnostic)
 
-create YAML files in your test directory (e.g., `tests/typesafety/test_types.yml`):
+use `# R: type` for reveal_type assertions and `# E: pattern` for error assertions:
 
 ```yaml
-- case: simple_reveal_type
+- case: reveal_type_works_across_checkers
+  checkers: [mypy, pyright, ty]
+  main: |
+    x: list[str] = ["a", "b"]
+    reveal_type(x)  # R: list[str]
+
+- case: error_detected_across_checkers
+  checkers: [mypy, pyright, ty]
+  main: |
+    def foo(x: int) -> str:
+        return x  # E: return
+```
+
+the plugin normalizes type representations (`builtins.int` -> `int`, `List` -> `list`, `Literal[42]` -> `int`) so the same assertion works across all checkers.
+
+### legacy format (pytest-mypy-plugins compatible)
+
+also supports the [pytest-mypy-plugins](https://github.com/typeddjango/pytest-mypy-plugins) format for migrating existing tests:
+
+```yaml
+- case: mypy_specific_output
   main: |
     x: int = 42
     reveal_type(x)
   out: 'Revealed type is "builtins.int"'
 
-- case: function_return_type_error
-  main: |
-    def foo(x: int) -> str:
-        return x
-  regex: yes
-  out: 'error:.*[Ii]ncompatible return'
-
-- case: valid_code_should_pass
+- case: should_pass_check
   main: |
     def add(a: int, b: int) -> int:
         return a + b
   should_pass: true
-
-- case: multi_checker_test
-  main: |
-    x: list[int] = [1, 2, 3]
-    reveal_type(x)
-  checkers: [mypy, pyright]
-  out_mypy: 'Revealed type is "builtins.list[builtins.int]"'
-  out_pyright: 'Type of "x" is "list[int]"'
 ```
 
 run the tests:
@@ -106,7 +111,7 @@ pytest tests/typesafety/
 
 ### programmatic assertions
 
-for more flexibility, use the assertion helpers directly in Python tests:
+for python tests, use the assertion helpers directly:
 
 ```python
 from typsht import assert_type_equals, assert_type_error, assert_no_errors, CheckerType
@@ -115,25 +120,19 @@ def test_reveal_type():
     assert_type_equals('''
         x: int = 1
         reveal_type(x)
-    ''', line=2, expected_type="int")
+    ''', line=2, expected_type="int", checkers=[CheckerType.MYPY, CheckerType.PYRIGHT, CheckerType.TY])
 
 def test_catches_error():
     assert_type_error('''
         def foo(x: int) -> str:
             return x
-    ''', line=2, error_pattern="incompatible return")
+    ''', error_pattern="return", checkers=[CheckerType.MYPY, CheckerType.PYRIGHT, CheckerType.TY])
 
 def test_valid_code():
     assert_no_errors('''
         def add(a: int, b: int) -> int:
             return a + b
-    ''')
-
-def test_multi_checker():
-    assert_type_equals('''
-        x: list[int] = [1]
-        reveal_type(x)
-    ''', line=2, expected_type="list[int]", checkers=[CheckerType.MYPY, CheckerType.PYRIGHT])
+    ''', checkers=[CheckerType.MYPY, CheckerType.PYRIGHT, CheckerType.TY])
 ```
 
 ## supported type checkers

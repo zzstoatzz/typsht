@@ -7,6 +7,7 @@ import pytest
 from typsht import CheckerType, assert_no_errors, assert_type_equals, assert_type_error
 from typsht._internal.pytest_plugin import (
     normalize_type,
+    parse_inline_assertions,
     parse_output,
     parse_yaml_cases,
 )
@@ -300,3 +301,94 @@ class TestParseYamlCases:
 
         assert len(cases) == 1
         assert cases[0].name == "valid_case"
+
+    def test_parse_inline_assertions(self, tmp_path) -> None:
+        yaml_content = textwrap.dedent("""\
+            - case: test_inline
+              main: |
+                x: int = 1
+                reveal_type(x)  # R: int
+        """)
+        yaml_file = tmp_path / "test_cases.yml"
+        yaml_file.write_text(yaml_content)
+
+        cases = parse_yaml_cases(yaml_file)
+
+        assert len(cases) == 1
+        assert len(cases[0].inline_assertions) == 1
+        assert cases[0].inline_assertions[0].line == 2
+        assert cases[0].inline_assertions[0].kind == "R"
+        assert cases[0].inline_assertions[0].pattern == "int"
+
+
+class TestInlineAssertions:
+    """tests for inline assertion parsing."""
+
+    def test_parse_reveal_type_assertion(self) -> None:
+        code = "reveal_type(x)  # R: int"
+        assertions = parse_inline_assertions(code)
+
+        assert len(assertions) == 1
+        assert assertions[0].line == 1
+        assert assertions[0].kind == "R"
+        assert assertions[0].pattern == "int"
+
+    def test_parse_error_assertion(self) -> None:
+        code = "return x  # E: incompatible"
+        assertions = parse_inline_assertions(code)
+
+        assert len(assertions) == 1
+        assert assertions[0].line == 1
+        assert assertions[0].kind == "E"
+        assert assertions[0].pattern == "incompatible"
+
+    def test_parse_error_assertion_no_pattern(self) -> None:
+        code = "return x  # E:"
+        assertions = parse_inline_assertions(code)
+
+        assert len(assertions) == 1
+        assert assertions[0].kind == "E"
+        assert assertions[0].pattern == ""
+
+    def test_parse_multiple_assertions(self) -> None:
+        code = textwrap.dedent("""\
+            x: int = 1
+            reveal_type(x)  # R: int
+            def foo() -> str:
+                return 1  # E: return
+        """)
+        assertions = parse_inline_assertions(code)
+
+        assert len(assertions) == 2
+        assert assertions[0].line == 2
+        assert assertions[0].kind == "R"
+        assert assertions[1].line == 4
+        assert assertions[1].kind == "E"
+
+    def test_parse_complex_type(self) -> None:
+        code = "reveal_type(x)  # R: dict[str, list[int]]"
+        assertions = parse_inline_assertions(code)
+
+        assert len(assertions) == 1
+        assert assertions[0].pattern == "dict[str, list[int]]"
+
+
+class TestLiteralNormalization:
+    """tests for Literal type normalization."""
+
+    def test_literal_int_normalized(self) -> None:
+        assert normalize_type("Literal[42]", CheckerType.PYRIGHT) == "int"
+        assert normalize_type("Literal[-1]", CheckerType.PYRIGHT) == "int"
+
+    def test_literal_str_normalized(self) -> None:
+        assert normalize_type('Literal["foo"]', CheckerType.PYRIGHT) == "str"
+        assert normalize_type("Literal['bar']", CheckerType.PYRIGHT) == "str"
+
+    def test_literal_bool_normalized(self) -> None:
+        assert normalize_type("Literal[True]", CheckerType.PYRIGHT) == "bool"
+        assert normalize_type("Literal[False]", CheckerType.PYRIGHT) == "bool"
+
+    def test_complex_literal_not_normalized(self) -> None:
+        # union of literals should not be normalized
+        result = normalize_type("Literal[1, 2, 3]", CheckerType.PYRIGHT)
+        assert result == "Literal[1, 2, 3]"

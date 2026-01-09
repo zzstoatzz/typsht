@@ -41,6 +41,15 @@ from typsht._internal.types import CheckerType, SourceInput
 
 
 @dataclass
+class InlineAssertion:
+    """an inline assertion parsed from a comment in the code."""
+
+    line: int
+    kind: str  # "R" for reveal_type, "E" for error
+    pattern: str  # expected type or error pattern
+
+
+@dataclass
 class TypeTestCase:
     """a single type checking test case."""
 
@@ -51,6 +60,7 @@ class TypeTestCase:
     should_pass: bool | None = None
     checkers: list[CheckerType] = field(default_factory=lambda: [CheckerType.MYPY])
     checker_outputs: dict[CheckerType, str] = field(default_factory=dict)
+    inline_assertions: list[InlineAssertion] = field(default_factory=list)
     source_path: Path | None = None  # path to yaml file for error reporting
 
 
@@ -118,10 +128,11 @@ def normalize_type(type_str: str, checker: CheckerType) -> str:
     """normalize type representations across checkers.
 
     mypy:    builtins.int, builtins.str, builtins.list[builtins.int]
-    pyright: int, str, List[int]
+    pyright: int, str, List[int], Literal[42]
     ty:      int, str, list[int]
 
     we normalize to lowercase modern Python style: int, str, list[int]
+    also normalizes simple Literal types to their base type.
     """
     result = type_str
 
@@ -138,6 +149,19 @@ def normalize_type(type_str: str, checker: CheckerType) -> str:
     result = re.sub(r"\bTuple\b", "tuple", result)
     result = re.sub(r"\bFrozenSet\b", "frozenset", result)
     result = re.sub(r"\bType\b", "type", result)
+
+    # normalize simple Literal types to base types
+    # Literal[42] -> int, Literal["foo"] -> str, Literal[True] -> bool
+    literal_match = re.match(r"^Literal\[(.+)\]$", result)
+    if literal_match:
+        inner = literal_match.group(1)
+        # check if it's a simple literal value
+        if re.match(r"^-?\d+$", inner):  # integer literal
+            result = "int"
+        elif re.match(r'^["\'].*["\']$', inner):  # string literal
+            result = "str"
+        elif inner in ("True", "False"):  # bool literal
+            result = "bool"
 
     return result
 
@@ -192,6 +216,37 @@ def parse_output(output: str, checker: CheckerType) -> NormalizedOutput:
 
 
 # ---------------------------------------------------------------------------
+# inline assertion parsing
+# ---------------------------------------------------------------------------
+
+# matches # R: type or # E: pattern or # E:
+INLINE_ASSERTION_PATTERN = re.compile(r"#\s*(?P<kind>[RE]):\s*(?P<pattern>.*?)\s*$")
+
+
+def parse_inline_assertions(code: str) -> list[InlineAssertion]:
+    """parse inline assertions from code comments.
+
+    supported formats:
+        reveal_type(x)  # R: int
+        reveal_type(x)  # R: list[str]
+        return x  # E: incompatible return
+        return x  # E:  (any error on this line)
+
+    returns list of InlineAssertion objects.
+    """
+    assertions = []
+    for line_num, line in enumerate(code.splitlines(), start=1):
+        match = INLINE_ASSERTION_PATTERN.search(line)
+        if match:
+            kind = match.group("kind")
+            pattern = match.group("pattern").strip()
+            assertions.append(
+                InlineAssertion(line=line_num, kind=kind, pattern=pattern)
+            )
+    return assertions
+
+
+# ---------------------------------------------------------------------------
 # yaml parsing
 # ---------------------------------------------------------------------------
 
@@ -236,14 +291,19 @@ def parse_yaml_cases(path: Path) -> list[TypeTestCase]:
         if isinstance(regex, str):
             regex = regex.lower() in ("yes", "true", "1")
 
+        # parse inline assertions from the code
+        main_code = item["main"]
+        inline_assertions = parse_inline_assertions(main_code)
+
         case = TypeTestCase(
             name=item["case"],
-            main=item["main"],
+            main=main_code,
             expected_output=item.get("out"),
             regex=regex,
             should_pass=item.get("should_pass"),
             checkers=checkers,
             checker_outputs=checker_outputs,
+            inline_assertions=inline_assertions,
             source_path=path,
         )
         cases.append(case)
@@ -305,14 +365,19 @@ class TypeTestItem(pytest.Item):
         for checker_type in self.case.checkers:
             checker = get_checker(checker_type)
             result = checker.check(source)
+            parsed = parse_output(result.output, checker_type)
 
-            # get expected output for this checker
-            expected = self.case.checker_outputs.get(
-                checker_type, self.case.expected_output
-            )
-
-            if expected is not None:
+            # priority 1: inline assertions (checker-agnostic)
+            if self.case.inline_assertions:
+                self._check_inline_assertions(parsed, checker_type, result.output)
+            # priority 2: per-checker or global expected output (legacy mode)
+            elif (
+                expected := self.case.checker_outputs.get(
+                    checker_type, self.case.expected_output
+                )
+            ) is not None:
                 self._assert_output(result.output, expected, checker_type)
+            # priority 3: should_pass flag
             elif self.case.should_pass is not None:
                 if self.case.should_pass and not result.success:
                     raise TypeTestFailure(
@@ -322,6 +387,46 @@ class TypeTestItem(pytest.Item):
                     raise TypeTestFailure(
                         f"{checker_type.value} passed but was expected to fail"
                     )
+
+    def _check_inline_assertions(
+        self, parsed: NormalizedOutput, checker: CheckerType, raw_output: str
+    ) -> None:
+        """check inline assertions against parsed output."""
+        for assertion in self.case.inline_assertions:
+            if assertion.kind == "R":
+                # reveal_type assertion
+                actual_type = parsed.revealed_types.get(assertion.line)
+                if actual_type is None:
+                    raise TypeTestFailure(
+                        f"{checker.value}: no revealed type on line {assertion.line}\n"
+                        f"available reveals: {parsed.revealed_types}\n"
+                        f"output:\n{raw_output}"
+                    )
+                expected_type = normalize_type(assertion.pattern, checker)
+                if actual_type != expected_type:
+                    raise TypeTestFailure(
+                        f"{checker.value}: type mismatch on line {assertion.line}\n"
+                        f"expected: {expected_type}\n"
+                        f"actual: {actual_type}"
+                    )
+            elif assertion.kind == "E":
+                # error assertion - check for error matching pattern anywhere
+                # (different checkers report errors on different lines)
+                if not parsed.errors:
+                    raise TypeTestFailure(
+                        f"{checker.value}: expected error but none found\n"
+                        f"output:\n{raw_output}"
+                    )
+                # if a pattern is specified, check it matches any error
+                if assertion.pattern:
+                    pattern = re.compile(assertion.pattern, re.IGNORECASE)
+                    matching = [e for e in parsed.errors if pattern.search(e[2])]
+                    if not matching:
+                        raise TypeTestFailure(
+                            f"{checker.value}: no error matching pattern "
+                            f"'{assertion.pattern}'\n"
+                            f"actual errors: {[e[2] for e in parsed.errors]}"
+                        )
 
     def _assert_output(self, actual: str, expected: str, checker: CheckerType) -> None:
         """assert output matches expected pattern."""
