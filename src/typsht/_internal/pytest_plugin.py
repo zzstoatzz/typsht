@@ -435,23 +435,27 @@ class TypeTestItem(pytest.Item):
 
     def _assert_output(self, actual: str, expected: str, checker: CheckerType) -> None:
         """assert output matches expected pattern."""
+        # normalize temp file paths to "main" for comparison
+        # this matches pytest-mypy-plugins behavior where "main:" refers to the test code
+        actual_normalized = re.sub(r"/[^\s:]+\.py:", "main:", actual)
+
         if self.case.regex:
             pattern = re.compile(expected, re.MULTILINE | re.DOTALL)
-            if not pattern.search(actual):
+            if not pattern.search(actual_normalized):
                 raise TypeTestFailure(
                     f"{checker.value} output did not match regex:\n"
                     f"expected pattern: {expected}\n"
-                    f"actual output:\n{actual}"
+                    f"actual output:\n{actual_normalized}"
                 )
         else:
             # normalize whitespace and compare
             expected_norm = " ".join(expected.split())
-            actual_norm = " ".join(actual.split())
+            actual_norm = " ".join(actual_normalized.split())
             if expected_norm not in actual_norm:
                 raise TypeTestFailure(
                     f"{checker.value} output did not match:\n"
                     f"expected: {expected}\n"
-                    f"actual:\n{actual}"
+                    f"actual:\n{actual_normalized}"
                 )
 
     def repr_failure(self, excinfo: Any) -> str:  # type: ignore[override]
