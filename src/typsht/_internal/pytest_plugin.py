@@ -93,14 +93,14 @@ PYRIGHT_REVEAL_PATTERN = re.compile(
 #  --> /path/file.py:2:13
 #   |
 # 2 | reveal_type(x)
-#   |             ^ `list[int]`
+#   |             ^^^ `list[int]`
+# note: variable number of context lines before the ^ marker
 TY_REVEAL_PATTERN = re.compile(
     r"info\[revealed-type\]: Revealed type\n"
     r"\s*--> (?P<file>[^:]+):(?P<line>\d+):\d+\n"
-    r".*?\n"
-    r".*?\n"
-    r"\s*\|\s*\^\s*`(?P<type>[^`]+)`",
-    re.MULTILINE | re.DOTALL,
+    r"(?:.*?\n)*?"  # match any context lines (non-greedy)
+    r"\s*\|\s*\^+\s*`(?P<type>[^`]+)`",  # ^+ to match multiple carets
+    re.MULTILINE,
 )
 
 # error patterns
