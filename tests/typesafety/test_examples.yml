@@ -1,0 +1,27 @@
+# example type safety tests using the typsht pytest plugin
+
+- case: simple_reveal_type
+  main: |
+    x: int = 42
+    reveal_type(x)
+  out: 'Revealed type is "builtins.int"'
+
+- case: list_reveal_type
+  main: |
+    from typing import List
+    x: List[str] = ["a", "b"]
+    reveal_type(x)
+  out: 'Revealed type is "builtins.list[builtins.str]"'
+
+- case: function_return_type_error
+  main: |
+    def foo(x: int) -> str:
+        return x
+  regex: yes
+  out: "error:.*[Ii]ncompatible return"
+
+- case: valid_function_should_pass
+  main: |
+    def add(a: int, b: int) -> int:
+        return a + b
+  should_pass: true
