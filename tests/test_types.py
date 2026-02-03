@@ -7,6 +7,25 @@ import pytest
 from typsht._internal.types import SourceInput
 
 
+# regression test for https://github.com/zzstoatzz/typsht/issues/7
+def test_public_api_lazy_imports() -> None:
+    """verify CheckerType can be imported without triggering pytest import."""
+    # this should work without pytest being imported at module load time
+    from typsht import CheckerType
+
+    assert CheckerType.MYPY.value == "mypy"
+
+
+def test_assertion_helpers_available_with_pytest() -> None:
+    """verify assertion helpers can be imported when pytest is available."""
+    from typsht import assert_no_errors, assert_type_equals, assert_type_error
+
+    # just verify they're callable
+    assert callable(assert_no_errors)
+    assert callable(assert_type_equals)
+    assert callable(assert_type_error)
+
+
 def test_source_input_with_content() -> None:
     """test creating SourceInput with content."""
     source = SourceInput(content="def foo(): pass")
